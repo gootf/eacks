@@ -1,0 +1,182 @@
+# EACKS v1.3 knowledge synthesis workflow — EFSM (stateDiagram-v2)
+# Guard contracts: eacks-execution skill
+# Mapping notes:
+#   - v1.3 has three terminal states (Accepted / Provisional / Abstained); workflow.yaml
+#     requires a single `final` -> collapsed into one outcome node S9, the Outcome type is
+#     carried by the arriving edge label (S9 generates the corresponding report).
+#   - Self-loops (S2->S2 concept re-clarification, S4->S4 re-validation, S5->S5 conflict
+#     repair) are NOT legal in the schema -> handled inside the node (description notes).
+#   - Iteration budget (global, all loops counted; over limit -> S8 or Abstain) is a
+#     runner-level discipline from the skeleton (eacks-execution section 3).
+name: eacks-synthesis-workflow
+version: 1.0.0
+description: "EACKS v1.3 knowledge synthesis protocol: ingest -> decompose -> align -> candidate relations -> verify -> integrate -> synthesize -> reconstruct -> outcome (Accepted / Provisional / Abstained)"
+
+nodes:
+  - id: S0
+    skill: corpus-knowledge-engineering  # author-built reference: github.com/gootf/corpus-knowledge-engineering; substitute an equivalent ingestion skill in your framework
+    role: intake
+    description: "Knowledge ingestion: source parsing, metadata, evidence typing; source-failure triage by Criticality x solvability (block-contracts S0: key/unverifiable -> S8, fundamentally unverifiable -> Abstain, non-key -> continue with risk); Completeness Gate >= 90% + all key sources registered"
+    outputs: [artifacts/sources.md]
+  - id: S1
+    skill: eacks-s1-decomposition
+    role: context-builder
+    description: "Hierarchical claim decomposition: minimal sufficient units, risk-driven fine-splitting, no infinite atomization; ClaimType + Origin marking"
+    inputs: [artifacts/sources.md]
+    outputs: [artifacts/claims.md]
+  - id: S2
+    skill: eacks-s2-concept-alignment
+    role: context-builder
+    description: "Concept clarification & alignment: Jingle-Jangle checks, hierarchy alignment, Correspondence (8 types), default-to-differentiate. Concept re-clarification loops handled inside this node (bounded by iteration budget)"
+    inputs: [artifacts/claims.md]
+    outputs: [artifacts/concepts-correspondence.md]
+  - id: S3
+    skill: eacks-s3-relation-types
+    role: context-builder
+    description: "Candidate relation generation: Relation typology application + mandatory Rationale; all candidates marked Candidate, never facts"
+    inputs: [artifacts/claims.md, artifacts/concepts-correspondence.md]
+    outputs: [artifacts/relations-candidates.md]
+  - id: S4
+    skill: eacks-s4-verification-guards
+    role: validator
+    description: "Verification gate: Type-Specific Validation, Anti-Compression, Conditional Divergence first, EpistemicStatus adjudication. Degrade/differentiate/conditionalize re-validation loops handled inside this node (bounded by iteration budget)"
+    inputs: [artifacts/relations-candidates.md]
+    outputs: [artifacts/relations-validated.md]
+  - id: S5
+    skill: eacks-s5-artifacts
+    role: executor
+    description: "Non-destructive graph integration: source concepts never deleted, Canonical as organization layer only; Relation Matrix / Conflict Index / Boundary Matrix. Conflict structured-repair loops handled inside this node (bounded by iteration budget)"
+    inputs: [artifacts/relations-validated.md]
+    outputs: [artifacts/knowledge-graph.md, artifacts/relation-matrix.md, artifacts/conflict-index.md, artifacts/boundary-matrix.md]
+  - id: S6
+    skill: eacks-s6-synthesis-guards
+    role: executor
+    description: "Higher-order synthesis: Cluster / Hierarchy / Mechanism / Boundary / Conflict; No-Third-Theory adjudication, Origin enforcement, conflict preservation, candidate staging lifecycle"
+    inputs: [artifacts/knowledge-graph.md, artifacts/relation-matrix.md, artifacts/conflict-index.md, artifacts/boundary-matrix.md]
+    outputs: [artifacts/higher-order.md]
+  - id: S7
+    skill: eacks-s7-semantic-loss
+    role: validator
+    description: "Reconstruction & conservativity gate: S -> K-hat round-trip (tools/eacks_roundtrip.py), Semantic Loss Taxonomy (10 items), hard-veto before soft score; final Structural promotion gate"
+    inputs: [artifacts/claims.md, artifacts/relations-validated.md, artifacts/higher-order.md]
+    outputs: [artifacts/reconstruction-report.md]
+  - id: S8
+    skill: eacks-s8-arbitration-template
+    role: coordinator
+    description: "Human-in-the-loop triage: structured arbitration write-back (ProvenanceType = human_decided), append-only log; consumes escalation items from S0/S2/S4/S7 (no fixed artifact input)"
+  - id: S9
+    skill: eacks-execution
+    role: closeout
+    description: "Outcome terminal: generate the report matching the arriving edge label — Accepted (final deliverables, 11 minimum artifacts) / Provisional (Uncertainty Report attached) / Abstained (legitimate abstention report). No outgoing edges"
+
+edges:
+  - from: S0
+    to: S1
+    via: [artifacts/sources.md]
+    label: "元数据与来源就绪；非关键来源无法核实（标记风险继续）"
+  - from: S0
+    to: S8
+    label: "关键来源无法核实 / 幻觉风险（人工可解决）"
+  - from: S0
+    to: S9
+    label: "关键来源根本不可核实 → Outcome: Abstained"
+  - from: S1
+    to: S2
+    via: [artifacts/claims.md]
+    label: "粗粒度 + 风险驱动细粒度解构完成"
+  - from: S2
+    to: S3
+    via: [artifacts/concepts-correspondence.md]
+    label: "概念空间清晰 / Correspondence 建立"
+  - from: S2
+    to: S8
+    label: "核心概念严重不可比"
+  - from: S3
+    to: S4
+    via: [artifacts/relations-candidates.md]
+    label: "候选关系生成完毕"
+  - from: S4
+    to: S5
+    via: [artifacts/relations-validated.md]
+    label: "关系通过验证（Validated）"
+  - from: S4
+    to: S2
+    label: "语义/层级/定义问题暴露"
+    loop: true
+  - from: S4
+    to: S8
+    label: "高风险 / Critical 关系无法裁决"
+  - from: S4
+    to: S9
+    label: "证据严重不足且 Critical → Outcome: Abstained"
+  - from: S5
+    to: S6
+    via: [artifacts/knowledge-graph.md, artifacts/relation-matrix.md, artifacts/conflict-index.md, artifacts/boundary-matrix.md]
+    label: "非破坏性图整合完成"
+  - from: S5
+    to: S2
+    label: "发现概念问题需回退"
+    loop: true
+  - from: S5
+    to: S4
+    label: "发现关系/证据问题需回退"
+    loop: true
+  - from: S6
+    to: S7
+    via: [artifacts/higher-order.md]
+    label: "高阶结构（Cluster/Hierarchy/Mechanism/Boundary/Conflict）生成"
+  - from: S7
+    to: S9
+    label: "硬约束全部通过 + Soft Score 达标 + Risk 可接受 → Outcome: Accepted"
+  - from: S7
+    to: S9
+    label: "核心可信，存在已标注的有限不确定性 → Outcome: Provisional"
+  - from: S7
+    to: S2
+    label: "语义损失 / 概念崩溃"
+    loop: true
+  - from: S7
+    to: S4
+    label: "关系/证据问题"
+    loop: true
+  - from: S7
+    to: S5
+    label: "图结构问题"
+    loop: true
+  - from: S7
+    to: S6
+    label: "高阶抽象问题"
+    loop: true
+  - from: S7
+    to: S8
+    label: "高风险未决 / Reconstruction 失败"
+  - from: S7
+    to: S9
+    label: "Critical 结构无法重建 → Outcome: Abstained"
+  - from: S8
+    to: S2
+    label: "专家澄清定义"
+    loop: true
+  - from: S8
+    to: S4
+    label: "专家提供证据/边界"
+    loop: true
+  - from: S8
+    to: S5
+    label: "专家裁定图整合"
+    loop: true
+  - from: S8
+    to: S6
+    label: "专家选定高阶框架"
+    loop: true
+  - from: S8
+    to: S9
+    label: "专家认可带不确定性交付 → Outcome: Provisional"
+  - from: S8
+    to: S9
+    label: "专家也无法可靠裁决 → Outcome: Abstained"
+  - from: S8
+    to: S9
+    label: "专家最终确认 → Outcome: Accepted"
+
+final: S9
